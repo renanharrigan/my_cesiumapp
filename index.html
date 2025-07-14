@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
+    <title>My CesiumJS App</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cesium/1.118.0/Cesium.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/cesium/1.118.0/Widgets/widgets.css" rel="stylesheet">
+    <style>
+        html, body, #cesiumContainer {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <div id="cesiumContainer"></div>
+    <script>
+        // Your Cesium ion token ID
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJmODM3ODY4YS0xMzE1LTRiMzktYjNhZi1lODdhNTgzY2RkZGYiLCJpZCI6MzIxMTg0LCJpYXQiOjE3NTI0NjQ0OTZ9.n2l0ALm9yy48XpkzjNxYgSw02XXw-PqQ9837LyaJ9Gc';
+
+        // Initialize the Cesium Viewer
+        const viewer = new Cesium.Viewer('cesiumContainer');
+
+        // Your Cesium ion 3D Asset ID
+        const assetId = 3539804;
+
+        // Load the 3D Tileset from Cesium ion
+        async function loadTileset() {
+            try {
+                const tileset = await Cesium.Cesium3DTileset.fromIonAssetId(assetId);
+                viewer.scene.primitives.add(tileset);
+
+                // Fly to the tileset's bounding sphere
+                viewer.zoomTo(tileset);
+            } catch (error) {
+                console.error(`Error loading tileset: ${error}`);
+            }
+        }
+
+        loadTileset();
+    </script>
+</body>
+</html>
