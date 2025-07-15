@@ -2,22 +2,36 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CesiumJS Flight Tracker</title>
   <!-- Include the CesiumJS JavaScript and CSS files -->
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.131/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.131/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <style>
+    /* Ensure the Cesium container fills the entire viewport */
+    html, body, #cesiumContainer {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden; /* Prevent scrollbars */
+      font-family: "Inter", sans-serif; /* Use Inter font */
+    }
+  </style>
 </head>
 <body>
   <div id="cesiumContainer"></div>
   <script type="module">
     // Your access token can be found at: https://ion.cesium.com/tokens.
     // This is the default access token from your ion account
-
     Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJmODM3ODY4YS0xMzE1LTRiMzktYjNhZi1lODdhNTgzY2RkZGYiLCJpZCI6MzIxMTg0LCJpYXQiOjE3NTI0NjQ0OTZ9.n2l0ALm9yy48XpkzjNxYgSw02XXw-PqQ9837LyaJ9Gc';
 
     // Initialize the Cesium Viewer in the HTML element with the `cesiumContainer` ID.
     const viewer = new Cesium.Viewer('cesiumContainer', {
       terrain: Cesium.Terrain.fromWorldTerrain(),
-    });    
+      // Enable the timeline and animation widgets for flight tracking
+      shouldAnimate: true, // Automatically play the animation
+    });
 
     // Fly the camera to San Francisco at the given longitude, latitude, and height.
     viewer.camera.flyTo({
@@ -30,8 +44,124 @@
 
     // Add Cesium OSM Buildings, a global 3D buildings layer.
     const buildingTileset = await Cesium.createOsmBuildingsAsync();
-    viewer.scene.primitives.add(buildingTileset);   
+    viewer.scene.primitives.add(buildingTileset);
+
+    // --- Flight Tracking Logic ---
+
+    // Define the start and end times for the flight simulation
+    const start = Cesium.JulianDate.fromDate(new Date(2025, 6, 15, 12, 0, 0)); // July 15, 2025, 12:00:00 PM UTC
+    const stop = Cesium.JulianDate.addSeconds(start, 120, new Cesium.JulianDate()); // 120 seconds (2 minutes) later
+
+    // Set the viewer's clock to control the animation
+    viewer.clock.startTime = start.clone();
+    viewer.clock.stopTime = stop.clone();
+    viewer.clock.currentTime = start.clone();
+    viewer.clock.multiplier = 1; // Play at normal speed
+    viewer.clock.shouldAnimate = true; // Ensure the clock is animating
+
+    // Zoom the timeline to the flight duration
+    viewer.timeline.zoomTo(start, stop);
+
+    // Create a SampledPositionProperty to store the aircraft's positions over time
+    // This property will interpolate between the given positions to create a smooth path.
+    const positionProperty = new Cesium.SampledPositionProperty();
+    positionProperty.setInterpolationOptions({
+      interpolationDegree: 5, // Higher degree for smoother curve
+      interpolationAlgorithm: Cesium.LagrangePolynomialApproximation, // Or HermitePolynomialApproximation
+    });
+
+    // Define the flight path from San Francisco to Los Angeles
+    // Start point (San Francisco)
+    const sfLon = -122.4175;
+    const sfLat = 37.655;
+    const sfAlt = 10000; // meters
+
+    // End point (Los Angeles)
+    const laLon = -118.2437;
+    const laLat = 34.0522;
+    const laAlt = 10000; // meters
+
+    // Add positions to the SampledPositionProperty
+    // We'll add a few intermediate points to make the path more interesting
+    const totalSteps = 100; // Number of interpolation steps for the path
+    for (let i = 0; i <= totalSteps; i++) {
+      const time = Cesium.JulianDate.addSeconds(start, (i / totalSteps) * 120, new Cesium.JulianDate());
+
+      // Linear interpolation for longitude, latitude, and altitude
+      const currentLon = Cesium.Math.lerp(sfLon, laLon, i / totalSteps);
+      const currentLat = Cesium.Math.lerp(sfLat, laLat, i / totalSteps);
+      // You can add a slight altitude variation for a more realistic flight profile (e.g., climb then descend)
+      let currentAlt = sfAlt;
+      if (i < totalSteps / 2) {
+        currentAlt = Cesium.Math.lerp(sfAlt, sfAlt + 2000, (i / (totalSteps / 2))); // Climb
+      } else {
+        currentAlt = Cesium.Math.lerp(sfAlt + 2000, laAlt, ((i - totalSteps / 2) / (totalSteps / 2))); // Descend
+      }
+
+
+      const position = Cesium.Cartesian3.fromDegrees(currentLon, currentLat, currentAlt);
+      positionProperty.addSample(time, position);
+    }
+
+    // Create the aircraft entity
+    const aircraft = viewer.entities.add({
+      // Set the entity's position to the SampledPositionProperty, making it animate along the path
+      position: positionProperty,
+      // Automatically orient the aircraft along its path
+      orientation: new Cesium.VelocityOrientationProperty(positionProperty),
+      model: {
+        uri: 'https://cesium.com/downloads/sample-data/models/Cesium_Air.glb', // A simple aircraft model
+        minimumPixelSize: 64, // Ensure the model is visible even when far away
+        maximumScale: 20000, // Prevent the model from becoming too large
+      },
+      // Add a path to show the aircraft's trajectory
+      path: {
+        resolution: 1,
+        material: new Cesium.ColorMaterialProperty(Cesium.Color.RED.withAlpha(0.7)),
+        width: 5,
+        leadTime: 0, // Show the entire path from the start
+        trailTime: 120, // Show the entire path for the duration of the flight
+      },
+      // Add a label for the aircraft
+      label: {
+        text: 'Flight 123',
+        font: '14pt sans-serif',
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        pixelOffset: new Cesium.Cartesian2(0, -20), // Offset the label above the model
+      },
+    });
+
+    // Fly the camera to view the aircraft's entire path
+    viewer.flyTo(aircraft, {
+      offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-90), 500000) // View from above
+    });
+
+    // Add a simple message box for user interaction if needed (instead of alert)
+    function showMessageBox(message) {
+      const messageBox = document.createElement('div');
+      messageBox.style.position = 'absolute';
+      messageBox.style.top = '10px';
+      messageBox.style.right = '10px';
+      messageBox.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+      messageBox.style.color = 'white';
+      messageBox.style.padding = '10px';
+      messageBox.style.borderRadius = '8px';
+      messageBox.style.zIndex = '1000';
+      messageBox.textContent = message;
+      document.body.appendChild(messageBox);
+
+      setTimeout(() => {
+        document.body.removeChild(messageBox);
+      }, 5000); // Remove message after 5 seconds
+    }
+
+    // Example usage of message box (optional)
+    // showMessageBox('Flight simulation started!');
+
   </script>
- </div>
 </body>
 </html>
