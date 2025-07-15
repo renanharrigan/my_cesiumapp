@@ -33,12 +33,12 @@
       shouldAnimate: true, // Automatically play the animation
     });
 
-    // Fly the camera to San Francisco at the given longitude, latitude, and height.
+    // Fly the camera to a good vantage point over San Francisco
     viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(-122.4175, 37.655, 400),
+      destination: Cesium.Cartesian3.fromDegrees(-122.4175, 37.75, 15000), // Adjusted height for better overview
       orientation: {
         heading: Cesium.Math.toRadians(0.0),
-        pitch: Cesium.Math.toRadians(-15.0),
+        pitch: Cesium.Math.toRadians(-45.0), // More angled view
       }
     });
 
@@ -70,36 +70,24 @@
       interpolationAlgorithm: Cesium.LagrangePolynomialApproximation, // Or HermitePolynomialApproximation
     });
 
-    // Define the flight path from San Francisco to Los Angeles
-    // Start point (San Francisco)
-    const sfLon = -122.4175;
-    const sfLat = 37.655;
-    const sfAlt = 10000; // meters
+    // Define the flight path within the San Francisco area
+    // Using coordinates that keep the flight around San Francisco and the Bay
+    const flightPoints = [
+      { lon: -122.4175, lat: 37.7749, alt: 5000 }, // Over downtown SF
+      { lon: -122.3789, lat: 37.7615, alt: 6000 }, // Towards Oakland Bay Bridge
+      { lon: -122.3879, lat: 37.8267, alt: 5500 }, // Over Alcatraz
+      { lon: -122.4789, lat: 37.8197, alt: 5000 }, // Near Golden Gate Bridge
+      { lon: -122.4950, lat: 37.7650, alt: 4500 }, // Towards Ocean Beach
+      { lon: -122.4175, lat: 37.7749, alt: 5000 }  // Back to start (looping)
+    ];
 
-    // End point (Los Angeles)
-    const laLon = -118.2437;
-    const laLat = 34.0522;
-    const laAlt = 10000; // meters
+    const totalFlightDuration = Cesium.JulianDate.secondsDifference(stop, start);
 
-    // Add positions to the SampledPositionProperty
-    // We'll add a few intermediate points to make the path more interesting
-    const totalSteps = 100; // Number of interpolation steps for the path
-    for (let i = 0; i <= totalSteps; i++) {
-      const time = Cesium.JulianDate.addSeconds(start, (i / totalSteps) * 120, new Cesium.JulianDate());
-
-      // Linear interpolation for longitude, latitude, and altitude
-      const currentLon = Cesium.Math.lerp(sfLon, laLon, i / totalSteps);
-      const currentLat = Cesium.Math.lerp(sfLat, laLat, i / totalSteps);
-      // You can add a slight altitude variation for a more realistic flight profile (e.g., climb then descend)
-      let currentAlt = sfAlt;
-      if (i < totalSteps / 2) {
-        currentAlt = Cesium.Math.lerp(sfAlt, sfAlt + 2000, (i / (totalSteps / 2))); // Climb
-      } else {
-        currentAlt = Cesium.Math.lerp(sfAlt + 2000, laAlt, ((i - totalSteps / 2) / (totalSteps / 2))); // Descend
-      }
-
-
-      const position = Cesium.Cartesian3.fromDegrees(currentLon, currentLat, currentAlt);
+    for (let i = 0; i < flightPoints.length; i++) {
+      const point = flightPoints[i];
+      // Distribute points evenly over the flight duration
+      const time = Cesium.JulianDate.addSeconds(start, (i / (flightPoints.length - 1)) * totalFlightDuration, new Cesium.JulianDate());
+      const position = Cesium.Cartesian3.fromDegrees(point.lon, point.lat, point.alt);
       positionProperty.addSample(time, position);
     }
 
@@ -124,7 +112,7 @@
       },
       // Add a label for the aircraft
       label: {
-        text: 'Flight 123',
+        text: 'SF Local Flight',
         font: '14pt sans-serif',
         fillColor: Cesium.Color.WHITE,
         outlineColor: Cesium.Color.BLACK,
@@ -135,9 +123,9 @@
       },
     });
 
-    // Fly the camera to view the aircraft's entire path
+    // Fly the camera to view the aircraft's entire path, adjusted for a local flight
     viewer.flyTo(aircraft, {
-      offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-90), 500000) // View from above
+      offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-60), 10000) // Closer view from above
     });
 
     // Add a simple message box for user interaction if needed (instead of alert)
@@ -160,7 +148,7 @@
     }
 
     // Example usage of message box (optional)
-    // showMessageBox('Flight simulation started!');
+    // showMessageBox('Local SF flight simulation started!');
 
   </script>
 </body>
