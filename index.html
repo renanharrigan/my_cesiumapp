@@ -58,6 +58,7 @@
     viewer.clock.currentTime = start.clone();
     viewer.clock.multiplier = 1; // Play at normal speed
     viewer.clock.shouldAnimate = true; // Ensure the clock is animating
+    viewer.clock.clockRange = Cesium.ClockRange.LOOP_STOP; // Explicitly loop the animation
 
     // Zoom the timeline to the flight duration
     viewer.timeline.zoomTo(start, stop);
