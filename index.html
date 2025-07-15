@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
-    <title>CesiumJS with Google Directions</title>
+    <title>CesiumJS with OSRM Directions</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cesium/1.118.0/Cesium.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/cesium/1.118.0/Widgets/widgets.css" rel="stylesheet">
     <style>
@@ -48,9 +48,9 @@
     <div id="cesiumContainer"></div>
     
     <div id="directionsPanel">
-        <h2>Directions</h2>
-        <input type="text" id="startLocation" placeholder="Start Location" value="New York, NY">
-        <input type="text" id="endLocation" placeholder="End Location" value="Los Angeles, CA">
+        <h2>OSRM Directions</h2>
+        <input type="text" id="startLocation" placeholder="Start Lat, Lng" value="40.7128, -74.0060">
+        <input type="text" id="endLocation" placeholder="End Lat, Lng" value="34.0522, -118.2437">
         <button id="getDirectionsButton">Get Directions</button>
         <div id="textDirections"></div>
     </div>
@@ -58,9 +58,6 @@
     <script>
         // Your Cesium ion token ID
         Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJmODM3ODY4YS0xMzE1LTRiMzktYjNhZi1lODdhNTgzY2RkZGYiLCJpZCI6MzIxMTg0LCJpYXQiOjE3NTI0NjQ0OTZ9.n2l0ALm9yy48XpkzjNxYgSw02XXw-PqQ9837LyaJ9Gc';
-        
-        // Your Google Maps Platform API Key
-        const googleMapsApiKey = 'AIzaSyA2S1Sce9KeQczm4N4T6pJ-vhfVlhMUP-0';
 
         // Initialize the Cesium Viewer
         const viewer = new Cesium.Viewer('cesiumContainer', {
@@ -82,66 +79,34 @@
         }
 
         loadTileset();
-
-        // Decode the polyline from the Google Directions API response
-        function decodePolyline(encoded) {
-            let points = [];
-            let index = 0, len = encoded.length;
-            let lat = 0, lng = 0;
-
-            while (index < len) {
-                let b, shift = 0, result = 0;
-                do {
-                    b = encoded.charCodeAt(index++) - 63;
-                    result |= (b & 0x1f) << shift;
-                    shift += 5;
-                } while (b >= 0x20);
-                let dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
-                lat += dlat;
-
-                shift = 0;
-                result = 0;
-                do {
-                    b = encoded.charCodeAt(index++) - 63;
-                    result |= (b & 0x1f) << shift;
-                    shift += 5;
-                } while (b >= 0x20);
-                let dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
-                lng += dlng;
-
-                points.push(lng / 1e5, lat / 1e5);
-            }
-            return points;
-        }
-
-        // Handle the button click to get directions
+        
+        // Handle the button click to get directions from OSRM
         document.getElementById('getDirectionsButton').addEventListener('click', async () => {
-            const start = document.getElementById('startLocation').value;
-            const end = document.getElementById('endLocation').value;
+            const startInput = document.getElementById('startLocation').value.split(',').map(coord => parseFloat(coord.trim()));
+            const endInput = document.getElementById('endLocation').value.split(',').map(coord => parseFloat(coord.trim()));
             const textDirectionsDiv = document.getElementById('textDirections');
             
             // Clear previous results
             viewer.entities.removeAll();
             textDirectionsDiv.innerHTML = '';
-
-            if (!start || !end) {
-                textDirectionsDiv.innerHTML = 'Please enter both start and end locations.';
+            
+            if (startInput.length !== 2 || endInput.length !== 2 || isNaN(startInput[0]) || isNaN(endInput[0])) {
+                textDirectionsDiv.innerHTML = 'Please enter valid coordinates (Lat, Lng).';
                 return;
             }
 
-            const directionsUrl = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(start)}&destination=${encodeURIComponent(end)}&key=${googleMapsApiKey}`;
-
+            // OSRM URL format: longitude,latitude
+            const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startInput[1]},${startInput[0]};${endInput[1]},${endInput[0]}?overview=full&steps=true`;
+            
             try {
-                const response = await fetch(directionsUrl);
+                const response = await fetch(osrmUrl);
                 const data = await response.json();
-
-                if (data.routes && data.routes.length > 0) {
+                
+                if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
                     const route = data.routes[0];
-                    const encodedPolyline = route.overview_polyline.points;
-                    const decodedPoints = decodePolyline(encodedPolyline);
-
-                    // Convert the decoded lat/lng pairs to Cesium Cartesian3 positions
-                    const positions = Cesium.Cartesian3.fromDegreesArray(decodedPoints);
+                    const decodedPolyline = route.geometry.coordinates; // OSRM returns a GeoJSON array of [lng, lat]
+                    
+                    const positions = Cesium.Cartesian3.fromDegreesArray(decodedPolyline.flat());
                     
                     // Add a polyline to the viewer
                     viewer.entities.add({
@@ -157,7 +122,7 @@
                     textDirectionsDiv.innerHTML = '<h4>Route Steps:</h4>';
                     route.legs[0].steps.forEach(step => {
                         const stepElement = document.createElement('div');
-                        stepElement.innerHTML = step.html_instructions;
+                        stepElement.innerHTML = step.maneuver.instruction;
                         textDirectionsDiv.appendChild(stepElement);
                     });
 
@@ -165,12 +130,12 @@
                     viewer.flyTo(viewer.entities.values[0]);
 
                 } else {
-                    textDirectionsDiv.innerHTML = 'No route found. Please check your locations.';
-                    console.error('Google Directions API returned no routes:', data);
+                    textDirectionsDiv.innerHTML = 'No route found. Please check your coordinates.';
+                    console.error('OSRM API returned an error:', data);
                 }
             } catch (error) {
                 textDirectionsDiv.innerHTML = 'An error occurred while fetching directions.';
-                console.error('Error fetching Google Directions:', error);
+                console.error('Error fetching OSRM Directions:', error);
             }
         });
     </script>
