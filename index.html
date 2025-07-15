@@ -72,6 +72,10 @@
             try {
                 const tileset = await Cesium.Cesium3DTileset.fromIonAssetId(assetId);
                 viewer.scene.primitives.add(tileset);
+
+                // IMPORTANT: Wait for the tileset to be ready before zooming
+                await tileset.readyPromise; 
+
                 viewer.zoomTo(tileset);
             } catch (error) {
                 console.error(`Error loading tileset: ${error}`);
